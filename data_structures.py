@@ -1,7 +1,6 @@
 # data_structures.py
-# This file contains custom data structures often covered in a Data Structures course.
-# It includes a DynamicArray, a SinglyLinkedList, a Stack, and a BytePairEncoder
-# implementation for simple compression/decompression.
+# This file contains allowed data structures to be used.
+# implementation for simple compression/decompression logic(BytePairEncoder).
 
 class DynamicArray:
     """

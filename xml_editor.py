@@ -1,23 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 xml_editor.py
 
-Main script for:
-  1. Command-line interface supporting:
-      - verify, format, json, mini, compress, decompress
-      - draw, search, most_active, most_influencer, mutual, suggest
-  2. GUI interface using Tkinter:
-      - File selection
-      - Output display
-      - Buttons to trigger each operation
-      - Graph visualization with NetworkX
-
-Uses custom data structures from data_structures.py for:
-  - XML tag stack verification
-  - Byte Pair Encoding compression
-  - Adjacency list using DynamicArray for social network
+This Logic Implementation can be used from the command line or launched as a GUI(Desktop App).
+It uses the custom data structures from data_structures.py and
+provides operations for XML verification, formatting, minifying,
+JSON conversion, compression/decompression, and social-network analysis.
 """
 
 import sys
@@ -26,107 +14,95 @@ import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 
-# 3rd-party libs for graph visualization
+# 3rd-party libraries for visualizing the network
 import networkx as nx
 import matplotlib.pyplot as plt
 
-# Import our custom data structures
 from data_structures import DynamicArray, SinglyLinkedList, Stack, BytePairEncoder
 
 
 ###############################################################################
-# 1) From-Scratch XML Verification
+# 1) XML Verification Using a Stack
 ###############################################################################
 
 def verify_xml_structure(xml_str, auto_fix=False):
     """
-    Uses a Stack to check for matching opening/closing tags.
-    Returns (is_consistent, possibly_fixed_xml, message).
-    If auto_fix=True, attempts naive corrections for mismatched tags.
+    Checks for matching opening and closing tags using our custom Stack.
+    Returns (is_consistent, possibly_fixed_string, message).
+    If auto_fix=True, tries to fix simpler errors like unclosed tags
+    by appending missing closing tags (very naive approach).
     """
-    # We'll do a very simplified tag-based parse to demonstrate stack usage.
-    # Real-world XML parsing is more complex (attributes, self-closing tags, etc.)
-
-    # Regex to find all tags, opening or closing
+    # We'll look for <tag> and </tag> through a regex, then push/pop from a Stack.
     tags = re.findall(r"<(/?[^>]+)>", xml_str)
-
     stack = Stack()
     errors = []
 
-    # We'll build a list of tokens (strings or tags)
-    # so we can do "auto-fix" if needed
+    # We split the XML into tokens (text or tags) so we can try to fix the content if needed.
     split_pattern = r'(<[^>]+>)'
     tokens = re.split(split_pattern, xml_str)
-    # tokens will be a list: text, <tag>, more text, <tag> ...
 
     for t in tags:
-        if t.startswith("/"):  # a closing tag
+        if t.startswith("/"):
+            # This is a closing tag, e.g. </title>
             closing_tag_name = t[1:].strip()
             if stack.is_empty():
-                errors.append(f"Unexpected closing tag </{closing_tag_name}> with no matching opening tag.")
+                errors.append(f"Unexpected closing tag </{closing_tag_name}> encountered.")
             else:
                 top_tag = stack.pop()
                 if top_tag != closing_tag_name:
-                    errors.append(f"Mismatched tag: <{top_tag}> closed by </{closing_tag_name}>.")
+                    errors.append(f"Mismatched tags: <{top_tag}> closed by </{closing_tag_name}>.")
         else:
-            # get the tag name (ignoring attributes if any)
-            # e.g. <tag attr="val">
-            # We'll split on whitespace to get the first piece
+            # This is an opening tag, e.g. <title>
+            # We separate out the tag name from potential attributes
             open_name = t.split()[0]
-            # remove optional slash if self-closing
+            # If it's a self-closing tag like <tag .../>, remove the slash at the end.
             if open_name.endswith("/"):
                 open_name = open_name[:-1].strip()
-            open_name = open_name.strip()
-            stack.push(open_name)
+            stack.push(open_name.strip())
 
-    # if stack not empty => some tags never closed
+    # If any tags remain on the stack, they're unclosed.
     while not stack.is_empty():
-        unclosed = stack.pop()
-        errors.append(f"Unclosed tag <{unclosed}>.")
+        unclosed_tag = stack.pop()
+        errors.append(f"Unclosed tag <{unclosed_tag}>.")
 
     if errors:
         if auto_fix:
-            # Extremely naive attempt to fix:
-            # For each error about mismatched or unclosed, we might remove or insert a tag.
-            # This is purely demonstration; real logic is more complex.
-            corrected = _naive_xml_autofix(tokens, errors)
-            if corrected:
-                return (True, corrected, "XML had errors but was auto-fixed.")
+            fixed_content = _naive_xml_autofix(tokens, errors)
+            if fixed_content:
+                return (True, fixed_content, "XML had inconsistencies but some were auto-fixed.")
             else:
-                return (False, xml_str, "Failed to fully auto-fix. Errors:\n" + "\n".join(errors))
+                return (False, xml_str, "Could not fix all XML issues:\n" + "\n".join(errors))
         else:
-            return (False, xml_str, "XML is inconsistent:\n" + "\n".join(errors))
+            return (False, xml_str, "XML is invalid:\n" + "\n".join(errors))
     else:
-        return (True, xml_str, "XML is well-formed and consistent.")
+        return (True, xml_str, "XML is well-formed.")
 
 
 def _naive_xml_autofix(tokens, errors):
-    # Just a placeholder to show some approach; we do minimal editing:
-    # E.g. if we have "Unclosed tag <XYZ>.", we can try to append </XYZ> near the end.
-    # If we have "Unexpected closing tag </XYZ>", we remove that token.
+    """
+    A very limited approach to repairing some XML mistakes.
+    For example, if there's an 'Unclosed tag <X>', we might add '</X>' near the end.
+    """
     new_tokens = []
     to_append = []
 
-    for line in errors:
-        if line.startswith("Unclosed tag <"):
-            tag_name = line.split("<")[1].split(">")[0]
+    for err in errors:
+        if err.startswith("Unclosed tag <"):
+            # We'll read the tag name from the message
+            tag_name = err.split("<")[1].split(">")[0]
+            # We'll plan to append a closing tag at the end of the document
             to_append.append(f"</{tag_name}>")
-        if "Unexpected closing tag </" in line:
-            # we might remove that tag from tokens if it appears
+        elif "Unexpected closing tag </" in err:
+            # We might want to remove that closing tag from the tokens
+            pass
+        elif "Mismatched tags:" in err:
+            # This is trickier to fix automatically; we skip it in this simplistic approach
             pass
 
-    # We won't do complicated removal here, just do minimal. For demonstration:
-    # 1) We'll remove lines complaining about "Mismatched tag..."
-    # 2) We'll add new closing tags at the end.
-
-    # If we wanted to remove mismatched closing tags, we'd parse the error string
-    # and remove them from the tokens. We'll skip the details here.
-
-    # Combine tokens back:
+    # Just recombine everything for now
     new_xml = "".join(tokens)
-    # append missing closings
-    for ta in to_append:
-        new_xml += ta
+    for closing in to_append:
+        new_xml += closing
     return new_xml
 
 
@@ -136,40 +112,35 @@ def _naive_xml_autofix(tokens, errors):
 
 def format_xml(xml_str):
     """
-    A simple indentation-based approach: parse the tags and indent.
+    Insert indentation and line breaks to make the XML more readable.
+    This is a basic approach that doesn't handle all edge cases.
     """
-    # We'll do a naive approach: tokenize by tags, indent for each level.
-    # Real solutions typically rely on libraries or xml.dom.minidom.
-
     tokens = re.split(r'(<[^>]+>)', xml_str)
     result = []
     indent_level = 0
-    spaces = "  "
+    indent_spaces = "  "
 
     for token in tokens:
         if not token.strip():
             continue
         if token.startswith("<"):
-            # check if closing tag
+            # Closing tag?
             if token.startswith("</"):
                 indent_level -= 1
-                result.append(spaces * indent_level + token)
+                result.append(indent_spaces * indent_level + token)
             else:
-                # opening or self-closing
-                result.append(spaces * indent_level + token)
+                # Opening or self-closing tag
+                result.append(indent_spaces * indent_level + token)
                 if not token.endswith("/>"):
-                    # not a self closing tag
                     indent_level += 1
         else:
-            # text content
-            # strip leading/trailing newlines
+            # Actual text content
             lines = token.strip().splitlines()
             for line in lines:
                 if line.strip():
-                    result.append(spaces * indent_level + line.strip())
+                    result.append(indent_spaces * indent_level + line.strip())
 
-    formatted_str = "\n".join(result)
-    return formatted_str
+    return "\n".join(result)
 
 
 ###############################################################################
@@ -178,34 +149,29 @@ def format_xml(xml_str):
 
 def xml_to_json(xml_str):
     """
-    Convert the given (well-formed) XML to a JSON-like dictionary, then to a string.
-    We'll do an ad-hoc parse. Real code might use an XML parser.
+    Convert the XML to a JSON-style string using ElementTree.
+    If parsing fails, return None.
     """
-    # For demonstration, let's parse with a built-in parser (re-inventing from scratch is large).
-    # But we remain consistent: we only rely on it to get an Element tree for easy iteration.
     import xml.etree.ElementTree as ET
     try:
         root = ET.fromstring(xml_str)
     except ET.ParseError:
-        return None  # not well-formed
+        return None  # Not well-formed
 
     def elem_to_dict(elem):
         d = {}
-        # children
         for child in elem:
             child_name = child.tag
             child_dict = elem_to_dict(child)
             if child_name not in d:
                 d[child_name] = []
             d[child_name].append(child_dict)
-        # text
-        text = (elem.text or '').strip()
-        if text:
-            d['text'] = text
+        text_content = (elem.text or "").strip()
+        if text_content:
+            d["text"] = text_content
         return d
 
     root_dict = {root.tag: elem_to_dict(root)}
-    # Convert to a pretty JSON string
     import json
     return json.dumps(root_dict, indent=2)
 
@@ -216,182 +182,165 @@ def xml_to_json(xml_str):
 
 def minify_xml(xml_str):
     """
-    Remove all unnecessary whitespaces, newlines.
+    Remove extra whitespace, newlines, and indentation to produce a compact XML.
     """
-    # We remove newlines, then remove spaces between tags
-    no_newlines = re.sub(r"\s*\n\s*", "", xml_str)
-    # remove spaces between tags: <tag>  <tag2> => <tag><tag2>
-    collapsed = re.sub(r">\s+<", "><", no_newlines)
+    no_newline = re.sub(r"\s*\n\s*", "", xml_str)
+    collapsed = re.sub(r">\s+<", "><", no_newline)
     return collapsed.strip()
 
 
 ###############################################################################
-# 5) Compression / Decompression (Byte-Pair Encoding)
+# 5) Compression / Decompression
 ###############################################################################
 
 def compress_data(input_str):
     """
-    Use BytePairEncoder from data_structures.py
-    Returns (compressed_str, merges_map) which can be stored or saved as needed.
+    Use BytePairEncoder to compress input_str.
+    Returns (compressed_str, merges_map).
     """
     compressed, merges_map = BytePairEncoder.compress(input_str, num_merges=10)
     return compressed, merges_map
 
 def decompress_data(compressed_str, merges_map):
     """
-    Decompress using BytePairEncoder
+    Decompress using BytePairEncoder with the merges_map.
     """
     return BytePairEncoder.decompress(compressed_str, merges_map)
 
 
 ###############################################################################
-# 6) Building and Analyzing the Social Network Graph
-#    (Using a custom adjacency list + optional NetworkX for visualization)
+# 6) Building and Analyzing the Social Network
 ###############################################################################
 
 class SocialNetwork:
     """
-    Represent users in an adjacency list (from-scratch using DynamicArray),
-    where each user has:
-      - user_id (string or int)
-      - name
-      - posts (a LinkedList of (body, topics))
-      - followers (list of user_ids following this user)
-    We also track who *this user* follows (which we can derive by flipping edges).
+    Represents users and their connections based on follower data.
+    Each user is stored in a DynamicArray with an ID, name, posts, and
+    followers (as a DynamicArray of user IDs).
     """
 
     def __init__(self):
-        # We'll store each user in a DynamicArray as a dict:
-        # { 'id': str,
+        # Each entry in self.users is a dict:
+        # {
+        #   'id': str,
         #   'name': str,
-        #   'posts': SinglyLinkedList of { 'body': str, 'topics': [str, ...] },
-        #   'followers': DynamicArray of user_ids (who follow this user) }
+        #   'posts': SinglyLinkedList(),  # each post has { 'body': str, 'topics': [list] }
+        #   'followers': DynamicArray()   # user IDs of those who follow this user
+        # }
         self.users = DynamicArray()
 
     def add_user(self, user_id, name):
-        # Check if user_id exists
+        # Only add the user if it doesn't exist yet.
         if self.find_user_index(user_id) != -1:
-            return  # already exists
-        user_dict = {
+            return
+        user_info = {
             'id': user_id,
             'name': name,
             'posts': SinglyLinkedList(),
             'followers': DynamicArray()
         }
-        self.users.append(user_dict)
+        self.users.append(user_info)
 
     def find_user_index(self, user_id):
+        # Return the index of the user in self.users, or -1 if not found.
         for i in range(len(self.users)):
             if self.users.get(i)['id'] == user_id:
                 return i
         return -1
 
     def add_follower(self, user_id, follower_id):
-        # user_id: the user who is being followed
-        # follower_id: the user who follows
+        # If user_id is followed by follower_id, store follower_id in user_id's followers.
         idx = self.find_user_index(user_id)
         if idx == -1:
             return
         user_data = self.users.get(idx)
-        # Check if follower_id not already in followers
+        # Make sure it's not already in the list
         for j in range(len(user_data['followers'])):
             if user_data['followers'].get(j) == follower_id:
-                return  # already a follower
+                return
         user_data['followers'].append(follower_id)
 
     def add_post(self, user_id, body, topics):
+        # Insert a new post into the user's posts list.
         idx = self.find_user_index(user_id)
         if idx == -1:
             return
         user_data = self.users.get(idx)
-        user_data['posts'].insert_at_tail({
-            'body': body,
-            'topics': topics
-        })
+        user_data['posts'].insert_at_tail({'body': body, 'topics': topics})
 
     def build_from_xml(self, xml_str):
         """
-        Parse the given XML (users, each user has <id>, <name>, <posts>, <followers>).
-        We'll rely on a simple re-parse with xml.etree (since the big logic is done above).
+        Parse an XML structure for <users>. Each <user>
+        has <id>, <name>, <posts>, <followers>, etc.
         """
         import xml.etree.ElementTree as ET
         try:
             root = ET.fromstring(xml_str)
         except ET.ParseError:
-            return  # do nothing if invalid
-
+            return
         for user_elem in root.findall('user'):
             uid = user_elem.findtext('id', '').strip()
-            name = user_elem.findtext('name', '').strip()
-            self.add_user(uid, name)
+            uname = user_elem.findtext('name', '').strip()
+            self.add_user(uid, uname)
 
-            # posts
+            # Extract posts
             posts_elem = user_elem.find('posts')
             if posts_elem is not None:
                 for post_elem in posts_elem.findall('post'):
-                    body_text = post_elem.findtext('body', '').strip()
+                    body = post_elem.findtext('body', '').strip()
                     topics_list = []
                     topics_elem = post_elem.find('topics')
                     if topics_elem is not None:
                         for t in topics_elem.findall('topic'):
                             topics_list.append(t.text.strip())
-                    self.add_post(uid, body_text, topics_list)
+                    self.add_post(uid, body, topics_list)
 
-            # followers
+            # Extract followers
             foll_elem = user_elem.find('followers')
             if foll_elem is not None:
                 for f in foll_elem.findall('follower'):
-                    fid = f.findtext('id', '').strip()
-                    self.add_follower(uid, fid)
+                    follower_id = f.findtext('id', '').strip()
+                    self.add_follower(uid, follower_id)
 
     def to_networkx(self):
         """
-        Convert our adjacency info to a NetworkX DiGraph:
-          - If X is in Y's followers => Y -> X edge
-          (meaning X follows Y)
+        Convert the adjacency info to a NetworkX DiGraph for easy visualization.
+        For a user U, each follower F => an edge F -> U (meaning F follows U).
         """
         G = nx.DiGraph()
-        # add nodes
+        # Add nodes
         for i in range(len(self.users)):
-            udata = self.users.get(i)
-            uid = udata['id']
-            G.add_node(uid, name=udata['name'], posts=udata['posts'].to_list())
-        # add edges
+            data = self.users.get(i)
+            G.add_node(data['id'], name=data['name'], posts=data['posts'].to_list())
+        # Add edges
         for i in range(len(self.users)):
-            udata = self.users.get(i)
-            uid = udata['id']
-            # For each follower => follower -> user
-            for j in range(len(udata['followers'])):
-                fid = udata['followers'].get(j)
-                # edge: fid -> uid
+            data = self.users.get(i)
+            uid = data['id']
+            for j in range(len(data['followers'])):
+                fid = data['followers'].get(j)
                 G.add_edge(fid, uid)
         return G
 
     def find_most_active(self):
         """
-        Most active user = user with highest 'outdegree' in the graph
-        (the # of people they follow). We can compute it by flipping
-        the 'followers' perspective: outdegree = # of users who list this
-        user as a follower.
+        Return the user who follows the most people.
+        We'll count how many times each user ID appears in others' followers.
         """
-        # Build quick map: user_id -> # following
-        # We'll do: for each user, see how many times they appear in others' follower lists
         following_count = {}
-        # init all
+        # Initialize all counts
         for i in range(len(self.users)):
             uid = self.users.get(i)['id']
             following_count[uid] = 0
 
+        # If user B is in user A's followers, that means B -> A,
+        # so B is following A. We'll increment B's count.
         for i in range(len(self.users)):
             udata = self.users.get(i)
-            uid = udata['id']
-            # Everyone in udata['followers'] follows uid
             for j in range(len(udata['followers'])):
                 fid = udata['followers'].get(j)
-                # fid is following uid => increment fid's "outdegree"
                 following_count[fid] = following_count.get(fid, 0) + 1
 
-        # find max
+        # Find the maximum outdegree
         max_user = None
         max_val = -1
         for user_id, val in following_count.items():
@@ -399,7 +348,6 @@ class SocialNetwork:
                 max_val = val
                 max_user = user_id
 
-        # also get that user name
         if max_user is not None:
             idx = self.find_user_index(max_user)
             if idx != -1:
@@ -408,7 +356,7 @@ class SocialNetwork:
 
     def find_most_influencer(self):
         """
-        Most influencer = user with largest # of followers.
+        Return the user with the highest number of followers.
         """
         max_user = None
         max_val = -1
@@ -416,110 +364,103 @@ class SocialNetwork:
         for i in range(len(self.users)):
             udata = self.users.get(i)
             uid = udata['id']
-            fname = udata['name']
+            name = udata['name']
             fcount = len(udata['followers'])
             if fcount > max_val:
                 max_val = fcount
                 max_user = uid
-                max_name = fname
+                max_name = name
         return (max_user, max_name, max_val)
 
     def mutual_followers(self, user_ids):
         """
-        user_ids: a list of user IDs. Return the set of users who follow all of them.
+        Given a list of user IDs, find all users who follow all of them.
         """
         if not user_ids:
             return []
-        # Build intersection of followers
-        first_user_idx = self.find_user_index(user_ids[0])
-        if first_user_idx == -1:
+        idx_first = self.find_user_index(user_ids[0])
+        if idx_first == -1:
             return []
-        mutual_set = set(self.users.get(first_user_idx)['followers'].to_list())
-
+        common = set(self.users.get(idx_first)['followers'].to_list())
         for uid in user_ids[1:]:
             idx = self.find_user_index(uid)
             if idx == -1:
                 return []
-            this_set = set(self.users.get(idx)['followers'].to_list())
-            mutual_set = mutual_set.intersection(this_set)
-
-        return list(mutual_set)
+            fset = set(self.users.get(idx)['followers'].to_list())
+            common = common.intersection(fset)
+        return list(common)
 
     def suggest_follows(self, user_id):
         """
-        Suggest a list of users to follow for user_id,
-        based on "followers of my followers" that I'm not already following.
+        Suggest new accounts for user_id to follow based on
+        "followers of my followers" that user_id doesn't already follow.
         """
         idx = self.find_user_index(user_id)
         if idx == -1:
             return []
-        # gather who user_id currently follows
-        # user_id follows U => U has user_id in its followers
-        # so we find all U for which user_id is in U's followers
+        # Identify who user_id already follows
+        # If user_id is in X's followers, that means user_id -> X.
+        # So we search for all X where user_id is in X's followers list.
         currently_follows = set()
         for i in range(len(self.users)):
             udata = self.users.get(i)
             if user_id in udata['followers'].to_list():
                 currently_follows.add(udata['id'])
 
-        # gather second-level
+        # Then find second-level accounts: the followers of the accounts we follow.
         suggestions = set()
-        for following_user in currently_follows:
-            # get that user's followers (i.e. the accounts that follow "following_user")
-            fidx = self.find_user_index(following_user)
-            if fidx != -1:
-                flwr_list = self.users.get(fidx)['followers'].to_list()
-                for f in flwr_list:
-                    if f not in currently_follows and f != user_id:
-                        suggestions.add(f)
+        for followed_user in currently_follows:
+            f_idx = self.find_user_index(followed_user)
+            if f_idx != -1:
+                their_followers = self.users.get(f_idx)['followers'].to_list()
+                for fol in their_followers:
+                    if fol != user_id and fol not in currently_follows:
+                        suggestions.add(fol)
         return list(suggestions)
 
     def search_posts_word(self, word):
         """
-        Return a list of (user_id, post_body) for each post that contains 'word'
-        in the body. Case-insensitive.
+        Find any posts containing 'word' in their body (case-insensitive).
+        Returns a list of (user_id, user_name, post_body).
         """
-        result = []
-        w_lower = word.lower()
+        results = []
+        w_lower = word.lower()  # Normalize the word to lowercase
         for i in range(len(self.users)):
             udata = self.users.get(i)
             uid = udata['id']
-            name = udata['name']
+            uname = udata['name']
             p = udata['posts'].head
             while p:
-                body_text = p.value['body']
-                if w_lower in body_text.lower():
-                    result.append((uid, name, body_text))
+                body_txt = p.value['body'].strip()  # Clean up whitespace
+                if w_lower in body_txt.lower():  # Case-insensitive comparison
+                    results.append((uid, uname, body_txt))
                 p = p.next
-        return result
+        return results
 
     def search_posts_topic(self, topic):
         """
-        Return a list of (user_id, post_body) for each post that has <topic> in topics list.
+        Find any posts that have 'topic' in their topics list (case-insensitive).
+        Returns a list of (user_id, user_name, post_body).
         """
-        result = []
-        t_lower = topic.lower()
+        results = []
+        t_lower = topic.lower()  # Normalize the topic to lowercase
         for i in range(len(self.users)):
             udata = self.users.get(i)
             uid = udata['id']
-            name = udata['name']
+            uname = udata['name']
             p = udata['posts'].head
             while p:
-                topics = p.value['topics']
-                # check if t_lower in topics (case-insensitive)
-                if any(t_lower == x.lower() for x in topics):
-                    result.append((uid, name, p.value['body']))
+                topics_list = [t.strip().lower() for t in p.value['topics']]  # Normalize all topics
+                if t_lower in topics_list:  # Check if the normalized topic matches
+                    results.append((uid, uname, p.value['body']))
                 p = p.next
-        return result
+        return results
 
-
-###############################################################################
-# 7) Network Visualization
-###############################################################################
 
 def draw_network(social_net):
     """
-    Uses NetworkX to draw the directed graph.
+    Display the social network using NetworkX and matplotlib.
+    Edges go from follower to the user they follow.
     """
     G = social_net.to_networkx()
     if len(G.nodes) == 0:
@@ -542,20 +483,20 @@ def draw_network(social_net):
 
 def cli_main():
     """
-    Usage examples:
-      python xml_editor.py verify -i input_file.xml --fix
-      python xml_editor.py format -i input_file.xml
-      python xml_editor.py json -i input_file.xml
-      python xml_editor.py mini -i input_file.xml
-      python xml_editor.py compress -i input_file.xml -o compressed.bpe
-      python xml_editor.py decompress -i compressed.bpe -o original.xml
-      python xml_editor.py draw -i input_file.xml
-      python xml_editor.py search -w "word" -i input_file.xml
-      python xml_editor.py search -t "topic" -i input_file.xml
-      python xml_editor.py most_active -i input_file.xml
-      python xml_editor.py most_influencer -i input_file.xml
-      python xml_editor.py mutual -i input_file.xml -ids 1,2
-      python xml_editor.py suggest -i input_file.xml -id 1
+    This function handles command-line usage:
+      xml_editor verify -i <file> [--fix] ...
+      xml_editor format -i <file> ...
+      xml_editor json -i <file> ...
+      xml_editor mini -i <file> ...
+      xml_editor compress -i <file> ...
+      xml_editor decompress -i <file> ...
+      xml_editor draw -i <file> ...
+      xml_editor search -w <word> -i <file> ...
+      xml_editor search -t <topic> -i <file> ...
+      xml_editor most_active -i <file> ...
+      xml_editor most_influencer -i <file> ...
+      xml_editor mutual -i <file> -ids 1,2,...
+      xml_editor suggest -i <file> -id 1 ...
     """
     argv = sys.argv[1:]
     if not argv:
@@ -563,10 +504,9 @@ def cli_main():
         sys.exit(1)
 
     command = argv[0]
-    # parse flags
     if '-i' in argv:
-        input_index = argv.index('-i') + 1
-        input_file = argv[input_index] if input_index < len(argv) else None
+        in_idx = argv.index('-i') + 1
+        input_file = argv[in_idx] if in_idx < len(argv) else None
     else:
         input_file = None
 
@@ -577,16 +517,15 @@ def cli_main():
 
     output_file = None
     if '-o' in argv:
-        out_index = argv.index('-o') + 1
-        if out_index < len(argv):
-            output_file = argv[out_index]
+        out_idx = argv.index('-o') + 1
+        if out_idx < len(argv):
+            output_file = argv[out_idx]
 
     if command == 'verify':
-        # check if --fix is present
         auto_fix = '--fix' in argv
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
-        ok, fixed, msg = verify_xml_structure(xml_str, auto_fix=auto_fix)
+            xstr = f.read()
+        ok, fixed, msg = verify_xml_structure(xstr, auto_fix=auto_fix)
         print(msg)
         if ok and auto_fix and output_file:
             with open(output_file, 'w', encoding='utf-8') as fw:
@@ -595,8 +534,8 @@ def cli_main():
 
     elif command == 'format':
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
-        formatted = format_xml(xml_str)
+            xstr = f.read()
+        formatted = format_xml(xstr)
         if output_file:
             with open(output_file, 'w', encoding='utf-8') as fw:
                 fw.write(formatted)
@@ -606,22 +545,22 @@ def cli_main():
 
     elif command == 'json':
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
-        jstr = xml_to_json(xml_str)
-        if jstr is None:
-            print("Error: invalid XML or parse error.")
+            xstr = f.read()
+        j = xml_to_json(xstr)
+        if j is None:
+            print("Error: invalid XML. Could not convert to JSON.")
         else:
             if output_file:
                 with open(output_file, 'w', encoding='utf-8') as fw:
-                    fw.write(jstr)
+                    fw.write(j)
                 print(f"JSON saved to {output_file}")
             else:
-                print(jstr)
+                print(j)
 
     elif command == 'mini':
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
-        mini_str = minify_xml(xml_str)
+            xstr = f.read()
+        mini_str = minify_xml(xstr)
         if output_file:
             with open(output_file, 'w', encoding='utf-8') as fw:
                 fw.write(mini_str)
@@ -633,8 +572,6 @@ def cli_main():
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
             data_str = f.read()
         compressed, merges_map = compress_data(data_str)
-        # We need to save both compressed and merges_map (so we can decompress)
-        # We'll store merges_map as JSON next to the compressed data
         import json
         bundle = {
             'compressed': compressed,
@@ -654,9 +591,9 @@ def cli_main():
         import json
         try:
             bundle = json.loads(bundle_json)
-            compressed = bundle['compressed']
+            cstr = bundle['compressed']
             merges_map = bundle['merges_map']
-            original = decompress_data(compressed, merges_map)
+            original = decompress_data(cstr, merges_map)
             if output_file:
                 with open(output_file, 'w', encoding='utf-8') as fw:
                     fw.write(original)
@@ -664,104 +601,99 @@ def cli_main():
             else:
                 print(original)
         except:
-            print("Error: invalid compressed file format.")
+            print("Error: file doesn't seem to be a valid compressed bundle.")
 
     elif command == 'draw':
-        # build network from xml
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
+            xstr = f.read()
         snet = SocialNetwork()
-        snet.build_from_xml(xml_str)
+        snet.build_from_xml(xstr)
         draw_network(snet)
         if output_file:
-            # Optionally save an image of the graph
-            # We'll do a quick hack: use plt.savefig
             plt.savefig(output_file)
-            print(f"Graph saved to {output_file}")
+            print(f"Graph image saved to {output_file}")
 
     elif command == 'search':
-        # can be -w word or -t topic
+        # We can search by word or topic
         if '-w' in argv:
             w_idx = argv.index('-w') + 1
             word = argv[w_idx]
             with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-                xml_str = f.read()
+                xstr = f.read()
             snet = SocialNetwork()
-            snet.build_from_xml(xml_str)
+            snet.build_from_xml(xstr)
             results = snet.search_posts_word(word)
             if results:
-                for (uid, name, body) in results:
-                    print(f"User {uid} ({name}) => {body[:60]}...")
+                for (uid, uname, body) in results:
+                    print(f"User {uid} ({uname}) => {body[:60]}...")
             else:
-                print("No posts found containing that word.")
+                print("No posts found with that word.")
         elif '-t' in argv:
             t_idx = argv.index('-t') + 1
             topic = argv[t_idx]
             with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-                xml_str = f.read()
+                xstr = f.read()
             snet = SocialNetwork()
-            snet.build_from_xml(xml_str)
+            snet.build_from_xml(xstr)
             results = snet.search_posts_topic(topic)
             if results:
-                for (uid, name, body) in results:
-                    print(f"User {uid} ({name}) => {body[:60]}...")
+                for (uid, uname, body) in results:
+                    print(f"User {uid} ({uname}) => {body[:60]}...")
             else:
-                print("No posts found containing that topic.")
+                print("No posts found for that topic.")
         else:
-            print("Usage for search: xml_editor search -w <word> -i file.xml OR -t <topic> -i file.xml")
+            print("Usage: xml_editor search -w <word> -i file.xml OR -t <topic> -i file.xml")
 
     elif command == 'most_active':
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
+            xstr = f.read()
         snet = SocialNetwork()
-        snet.build_from_xml(xml_str)
-        uid, name, outdeg = snet.find_most_active()
+        snet.build_from_xml(xstr)
+        uid, uname, outdeg = snet.find_most_active()
         if uid:
-            print(f"Most active user: ID={uid}, Name={name}, OutDegree={outdeg}")
+            print(f"Most active user: ID={uid}, Name={uname}, Follows={outdeg}")
         else:
-            print("No users found.")
+            print("No data found or no users in XML.")
 
     elif command == 'most_influencer':
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
+            xstr = f.read()
         snet = SocialNetwork()
-        snet.build_from_xml(xml_str)
-        uid, name, fcount = snet.find_most_influencer()
+        snet.build_from_xml(xstr)
+        uid, uname, count = snet.find_most_influencer()
         if uid:
-            print(f"Most influencer user: ID={uid}, Name={name}, Followers={fcount}")
+            print(f"Most influencer: ID={uid}, Name={uname}, Followers={count}")
         else:
-            print("No users found.")
+            print("No data found or no users in XML.")
 
     elif command == 'mutual':
-        # usage: xml_editor mutual -i input.xml -ids 1,2,3
         if '-ids' not in argv:
-            print("Usage: xml_editor mutual -i input.xml -ids 1,2,3")
+            print("Usage: xml_editor mutual -i file.xml -ids 1,2,3")
             sys.exit(1)
-        ids_index = argv.index('-ids') + 1
-        id_list_str = argv[ids_index]
+        ids_idx = argv.index('-ids') + 1
+        id_list_str = argv[ids_idx]
         user_ids = id_list_str.split(',')
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
+            xstr = f.read()
         snet = SocialNetwork()
-        snet.build_from_xml(xml_str)
+        snet.build_from_xml(xstr)
         mutuals = snet.mutual_followers(user_ids)
-        print(f"Mutual followers of {user_ids} => {mutuals}")
+        print(f"Users who follow all of {user_ids}: {mutuals}")
 
     elif command == 'suggest':
-        # usage: xml_editor suggest -i input.xml -id 1
         if '-id' not in argv:
-            print("Usage: xml_editor suggest -i input.xml -id <user_id>")
+            print("Usage: xml_editor suggest -i file.xml -id <user_id>")
             sys.exit(1)
         user_id = argv[argv.index('-id') + 1]
         with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
-            xml_str = f.read()
+            xstr = f.read()
         snet = SocialNetwork()
-        snet.build_from_xml(xml_str)
+        snet.build_from_xml(xstr)
         suggestions = snet.suggest_follows(user_id)
         if suggestions:
             print(f"Suggested users for {user_id} to follow: {suggestions}")
         else:
-            print(f"No suggestions or user {user_id} not found.")
+            print(f"No suggestions for user {user_id}, or user not found.")
 
     else:
         print(f"Unknown command: {command}")
@@ -775,9 +707,9 @@ def cli_main():
 class XmlEditorGUI:
     def __init__(self, master):
         self.master = master
-        self.master.title("XML Editor (Level 1 & 2)")
+        self.master.title("XML Editor - Course Project")
 
-        # File selection
+        # File selection area
         file_frame = tk.Frame(self.master)
         file_frame.pack(fill=tk.X, padx=5, pady=5)
         tk.Label(file_frame, text="XML File:").pack(side=tk.LEFT)
@@ -785,10 +717,9 @@ class XmlEditorGUI:
         tk.Entry(file_frame, textvariable=self.file_var, width=50).pack(side=tk.LEFT, padx=5)
         tk.Button(file_frame, text="Browse", command=self.browse_file).pack(side=tk.LEFT)
 
-        # Operation buttons
+        # Buttons for basic operations
         btn_frame = tk.Frame(self.master)
         btn_frame.pack(fill=tk.X, padx=5, pady=5)
-
         tk.Button(btn_frame, text="Verify (Fix)", command=self.gui_verify).pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Format", command=self.gui_format).pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="To JSON", command=self.gui_json).pack(side=tk.LEFT, padx=2)
@@ -797,10 +728,9 @@ class XmlEditorGUI:
         tk.Button(btn_frame, text="Decompress", command=self.gui_decompress).pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Draw Graph", command=self.gui_draw).pack(side=tk.LEFT, padx=2)
 
-        # Network Analysis / Search
+        # Buttons for network analysis and searching
         adv_frame = tk.Frame(self.master)
         adv_frame.pack(fill=tk.X, padx=5, pady=5)
-
         tk.Button(adv_frame, text="Most Active", command=self.gui_most_active).pack(side=tk.LEFT, padx=2)
         tk.Button(adv_frame, text="Most Influencer", command=self.gui_most_influencer).pack(side=tk.LEFT, padx=2)
 
@@ -826,65 +756,65 @@ class XmlEditorGUI:
         tk.Entry(search_frame, textvariable=self.topic_var, width=10).pack(side=tk.LEFT)
         tk.Button(search_frame, text="Search Topic", command=self.gui_search_topic).pack(side=tk.LEFT, padx=2)
 
-        # Output area
+        # Output area to show results
         self.output_area = scrolledtext.ScrolledText(self.master, width=90, height=20)
         self.output_area.pack(padx=5, pady=5)
 
-        # Save button
+        # Button to save output
         tk.Button(self.master, text="Save Output", command=self.save_output).pack(pady=5)
 
     def browse_file(self):
-        fname = filedialog.askopenfilename(title="Select an XML file")
+        fname = filedialog.askopenfilename(title="Select XML file")
         if fname:
             self.file_var.set(fname)
 
     def _read_xml_file(self):
-        fpath = self.file_var.get().strip()
-        if not os.path.isfile(fpath):
-            messagebox.showerror("Error", f"File not found: {fpath}")
+        path = self.file_var.get().strip()
+        if not os.path.isfile(path):
+            messagebox.showerror("Error", f"File not found: {path}")
             return None
-        with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
             return f.read()
 
     def _write_output(self, text):
         self.output_area.delete('1.0', tk.END)
         self.output_area.insert(tk.END, text)
 
-    # GUI Buttons:
+    # GUI handlers:
 
     def gui_verify(self):
         content = self._read_xml_file()
         if content is None:
             return
         ok, fixed, msg = verify_xml_structure(content, auto_fix=True)
-        output = msg
+        to_display = msg
         if ok and fixed != content:
-            output += "\n--- Fixed Version ---\n" + fixed
-        self._write_output(output)
+            to_display += "\n\n--- Fixed XML ---\n" + fixed
+        self._write_output(to_display)
 
     def gui_format(self):
         content = self._read_xml_file()
         if content is None:
             return
-        out = format_xml(content)
-        self._write_output(out)
+        formatted = format_xml(content)
+        self._write_output(formatted)
 
     def gui_json(self):
         content = self._read_xml_file()
         if content is None:
             return
-        j = xml_to_json(content)
-        if j is None:
-            self._write_output("Error converting to JSON. Possibly invalid XML.")
+        jdata = xml_to_json(content)
+        if jdata is None:
+            self._write_output("Error converting XML to JSON (maybe malformed).")
         else:
-            self._write_output(j)
+            self._write_output(jdata)
 
     def gui_minify(self):
         content = self._read_xml_file()
         if content is None:
             return
-        out = minify_xml(content)
-        self._write_output(out)
+        mini_str = minify_xml(content)
+        self._write_output(mini_str)
 
     def gui_compress(self):
         content = self._read_xml_file()
@@ -901,17 +831,17 @@ class XmlEditorGUI:
     def gui_decompress(self):
         text = self.output_area.get('1.0', tk.END).strip()
         if not text:
-            self._write_output("No content in output area to decompress.")
+            self._write_output("Output area is empty. Nothing to decompress.")
             return
         import json
         try:
             bundle = json.loads(text)
-            compressed = bundle['compressed']
+            comp_data = bundle['compressed']
             merges_map = bundle['merges_map']
-            original = decompress_data(compressed, merges_map)
+            original = decompress_data(comp_data, merges_map)
             self._write_output(original)
         except:
-            self._write_output("Failed to parse compressed JSON from output area.")
+            self._write_output("Could not parse the compressed JSON.")
 
     def gui_draw(self):
         content = self._read_xml_file()
@@ -927,11 +857,11 @@ class XmlEditorGUI:
             return
         snet = SocialNetwork()
         snet.build_from_xml(content)
-        uid, name, outdeg = snet.find_most_active()
+        uid, uname, outdeg = snet.find_most_active()
         if uid:
-            self._write_output(f"Most active: ID={uid}, Name={name}, OutDegree={outdeg}")
+            self._write_output(f"Most active user: ID={uid}, Name={uname}, Follows={outdeg}")
         else:
-            self._write_output("No users found.")
+            self._write_output("No users found or no data present.")
 
     def gui_most_influencer(self):
         content = self._read_xml_file()
@@ -939,11 +869,11 @@ class XmlEditorGUI:
             return
         snet = SocialNetwork()
         snet.build_from_xml(content)
-        uid, name, count = snet.find_most_influencer()
+        uid, uname, count = snet.find_most_influencer()
         if uid:
-            self._write_output(f"Most influencer: ID={uid}, Name={name}, Followers={count}")
+            self._write_output(f"Most influencer: ID={uid}, Name={uname}, Followers={count}")
         else:
-            self._write_output("No users found.")
+            self._write_output("No users found or no data present.")
 
     def gui_mutual(self):
         content = self._read_xml_file()
@@ -951,7 +881,7 @@ class XmlEditorGUI:
             return
         ids_str = self.mutual_var.get().strip()
         if not ids_str:
-            self._write_output("No IDs given.")
+            self._write_output("No user IDs provided for mutual followers check.")
             return
         user_ids = [x.strip() for x in ids_str.split(',')]
         snet = SocialNetwork()
@@ -965,12 +895,12 @@ class XmlEditorGUI:
             return
         uid = self.suggest_var.get().strip()
         if not uid:
-            self._write_output("No user ID given for suggestion.")
+            self._write_output("No user ID provided for suggestion.")
             return
         snet = SocialNetwork()
         snet.build_from_xml(content)
-        sug = snet.suggest_follows(uid)
-        self._write_output(f"Suggestions for {uid}: {sug}")
+        suggestions = snet.suggest_follows(uid)
+        self._write_output(f"Suggestions for user {uid}: {suggestions}")
 
     def gui_search_word(self):
         content = self._read_xml_file()
@@ -978,18 +908,18 @@ class XmlEditorGUI:
             return
         word = self.word_var.get().strip()
         if not word:
-            self._write_output("No word provided.")
+            self._write_output("No word entered.")
             return
         snet = SocialNetwork()
         snet.build_from_xml(content)
         results = snet.search_posts_word(word)
         if not results:
-            self._write_output("No posts found with that word.")
+            self._write_output("No posts found containing that word.")
         else:
-            out = "Posts containing the word:\n"
-            for uid, name, body in results:
-                out += f"User {uid} ({name}): {body[:70]}...\n"
-            self._write_output(out)
+            display_str = "Posts containing the word:\n"
+            for (uid, uname, body) in results:
+                display_str += f"User {uid} ({uname}): {body[:70]}...\n"
+            self._write_output(display_str)
 
     def gui_search_topic(self):
         content = self._read_xml_file()
@@ -997,7 +927,7 @@ class XmlEditorGUI:
             return
         topic = self.topic_var.get().strip()
         if not topic:
-            self._write_output("No topic provided.")
+            self._write_output("No topic entered.")
             return
         snet = SocialNetwork()
         snet.build_from_xml(content)
@@ -1005,15 +935,15 @@ class XmlEditorGUI:
         if not results:
             self._write_output("No posts found with that topic.")
         else:
-            out = "Posts containing the topic:\n"
-            for uid, name, body in results:
-                out += f"User {uid} ({name}): {body[:70]}...\n"
-            self._write_output(out)
+            display_str = "Posts containing the topic:\n"
+            for (uid, uname, body) in results:
+                display_str += f"User {uid} ({uname}): {body[:70]}...\n"
+            self._write_output(display_str)
 
     def save_output(self):
         text = self.output_area.get('1.0', tk.END)
         if not text.strip():
-            messagebox.showinfo("Info", "No output to save.")
+            messagebox.showinfo("Info", "Output area is empty.")
             return
         fname = filedialog.asksaveasfilename(title="Save output", defaultextension=".txt")
         if fname:
@@ -1032,10 +962,9 @@ def gui_main():
 # Main Entry
 ###############################################################################
 if __name__ == "__main__":
-    # If user issues "python xml_editor.py <command>" => CLI mode
+    # If a command is given, we assume CLI mode
     if len(sys.argv) > 1:
-        # We assume it's CLI usage
         cli_main()
     else:
-        # No arguments => open GUI
+        # Otherwise, launch the GUI
         gui_main()
